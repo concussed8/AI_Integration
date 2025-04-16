@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Object Recognition with Webcam</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    canvas, video {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    #container {
+      position: relative;
+      width: 640px;
+      height: 480px;
+      border: 4px solid #00e676;
+      overflow: hidden;
+    }
+
+    h1 {
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Real-Time Object Recognition</h1>
+  <div id="container">
+    <video id="webcam" width="640" height="480" autoplay muted playsinline></video>
+    <canvas id="output" width="640" height="480"></canvas>
+  </div>
+
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+  <script>
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('output');
+    const ctx = canvas.getContext('2d');
+
+    async function setupCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      return new Promise(resolve => {
+        video.onloadedmetadata = () => {
+          resolve(video);
+        };
+      });
+    }
+
+    async function run() {
+      await setupCamera();
+      const model = await cocoSsd.load();
+      detectFrame(video, model);
+    }
+
+    function detectFrame(video, model) {
+      model.detect(video).then(predictions => {
+        renderPredictions(predictions);
+        requestAnimationFrame(() => {
+          detectFrame(video, model);
+        });
+      });
+    }
+
+    function renderPredictions(predictions) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      predictions.forEach(pred => {
+        ctx.beginPath();
+        ctx.rect(...pred.bbox);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#00e676';
+        ctx.fillStyle = '#00e676';
+        ctx.stroke();
+        ctx.fillText(
+          `${pred.class} (${Math.round(pred.score * 100)}%)`,
+          pred.bbox[0],
+          pred.bbox[1] > 10 ? pred.bbox[1] - 5 : 10
+        );
+      });
+    }
+
+    run();
+  </script>
+</body>
+</html>
