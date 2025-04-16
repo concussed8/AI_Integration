@@ -2,135 +2,101 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Object Detection (Single Snapshot)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Object Capture and Label</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #000;
-      color: white;
+    body {
       font-family: sans-serif;
       text-align: center;
-      overflow-x: hidden;
+      background: #000;
+      color: #fff;
+      margin: 0;
+      padding: 1rem;
     }
-
-    h1 {
-      margin: 1rem 0 0.5rem;
-      font-size: 1.3rem;
-    }
-
-    #container {
-      position: relative;
-      width: 100vw;
-      max-width: 640px;
-      aspect-ratio: 4 / 3;
-      margin: auto;
-      border: 3px solid #00e676;
-      overflow: hidden;
-    }
-
     video, canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
       width: 100%;
-      height: 100%;
-      object-fit: cover;
+      max-width: 400px;
+      height: auto;
+      border: 3px solid #00e676;
+      margin-bottom: 1rem;
     }
-
-    #detectBtn {
-      margin-top: 1rem;
-      padding: 12px 24px;
+    input, button {
+      padding: 10px;
       font-size: 1rem;
-      background-color: #00e676;
-      border: none;
-      border-radius: 5px;
-      color: #000;
-      font-weight: bold;
-    }
-
-    #status {
-      margin-top: 1rem;
-      font-size: 1rem;
-      color: #aaa;
+      margin-top: 0.5rem;
     }
   </style>
 </head>
 <body>
-  <h1>Tap to Detect Object</h1>
+  <h2>📸 Scan Object</h2>
 
-  <div id="container">
-    <video id="webcam" autoplay muted playsinline></video>
-    <canvas id="output"></canvas>
+  <video id="webcam" autoplay playsinline muted></video>
+  <canvas id="snapshot" style="display:none;"></canvas>
+
+  <div>
+    <button id="captureBtn">Take Picture</button>
   </div>
 
-  <button id="detectBtn">Detect Object</button>
-  <div id="status">Camera ready</div>
+  <div style="margin-top:1rem;">
+    <input type="text" id="labelInput" placeholder="Enter object name (e.g., ventilator)" />
+    <button id="uploadBtn">Upload</button>
+  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage.js"></script>
 
   <script>
+    // 🔐 Your Firebase Config
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const storage = firebase.storage();
+
+    // 🔧 Setup Camera
     const video = document.getElementById('webcam');
-    const canvas = document.getElementById('output');
-    const ctx = canvas.getContext('2d');
-    const statusText = document.getElementById('status');
-    const detectBtn = document.getElementById('detectBtn');
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(stream => video.srcObject = stream);
 
-    let model;
-
-    async function setupCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } }
-        });
-        video.srcObject = stream;
-        return new Promise(resolve => {
-          video.onloadedmetadata = () => resolve(video);
-        });
-      } catch (err) {
-        statusText.textContent = 'Error accessing rear camera.';
-        console.error('Camera error:', err);
-      }
-    }
-
-    async function init() {
-      statusText.textContent = 'Initializing camera...';
-      await setupCamera();
-
-      statusText.textContent = 'Loading model...';
-      model = await cocoSsd.load();
-      statusText.textContent = 'Tap the button to detect an object.';
-    }
-
-    detectBtn.addEventListener('click', async () => {
-      if (!model) return;
-
+    // 📸 Capture Snapshot
+    const canvas = document.getElementById('snapshot');
+    const captureBtn = document.getElementById('captureBtn');
+    captureBtn.onclick = () => {
+      const ctx = canvas.getContext('2d');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.style.display = 'block';
+    };
 
-      const predictions = await model.detect(canvas);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#00e676';
-      ctx.font = '18px sans-serif';
-      ctx.fillStyle = '#00e676';
+    // ☁️ Upload Image + Label
+    document.getElementById('uploadBtn').onclick = async () => {
+      const label = document.getElementById('labelInput').value.trim();
+      if (!label) return alert("Please enter a label.");
 
-      predictions.forEach(pred => {
-        ctx.strokeRect(...pred.bbox);
-        ctx.fillText(`${pred.class} (${Math.round(pred.score * 100)}%)`, pred.bbox[0], pred.bbox[1] - 10);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+      const filename = `${label}_${Date.now()}.jpg`;
+      const ref = storage.ref().child('objects/' + filename);
+      await ref.put(blob);
+
+      const url = await ref.getDownloadURL();
+      await db.collection("objects").add({
+        label: label,
+        imageUrl: url,
+        timestamp: new Date().toISOString()
       });
 
-      if (predictions.length === 0) {
-        statusText.textContent = 'No objects detected.';
-      } else {
-        statusText.textContent = 'Detected: ' + predictions.map(p => p.class).join(', ');
-      }
-    });
-
-    init();
+      alert("Uploaded to Firebase!");
+    };
   </script>
 </body>
 </html>
