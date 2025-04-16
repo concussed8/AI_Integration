@@ -2,9 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Object Capture and Label</title>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Object Label & Upload</title>
   <style>
     body {
       background: #000;
@@ -27,6 +26,12 @@
       padding: 10px;
       margin-top: 0.5rem;
     }
+
+    #status {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      color: #aaa;
+    }
   </style>
 </head>
 
@@ -36,100 +41,113 @@
   <!-- Live Camera Feed -->
   <video id="webcam" autoplay playsinline muted></video>
 
-  <!-- Snapshot Canvas (initially hidden) -->
-  <canvas id="snapshot" style="display: none;"></canvas>
+  <!-- Snapshot Preview -->
+  <canvas id="snapshot" style="display:none;"></canvas>
 
-  <!-- Capture Button -->
+  <!-- Controls -->
   <div>
     <button id="captureBtn">Take Picture</button>
   </div>
 
-  <!-- Label Input + Upload Button -->
   <div style="margin-top: 1rem;">
     <input type="text" id="labelInput" placeholder="Enter object name (e.g., ventilator)" />
     <button id="uploadBtn">Upload</button>
   </div>
 
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage.js"></script>
+  <div id="status">Camera ready</div>
+
+  <!-- ✅ Firebase SDKs (COMPAT versions for browser use) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
 
   <script>
-    // 🔐 Firebase Configuration
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
+    // 🔐 Firebase Config (replace with your real values)
+   const firebaseConfig = {
+  apiKey: "AIzaSyBhcAZoI-SlgDtH4ST044OohXDtYkmUNVo",
+  authDomain: "object-scan-db.firebaseapp.com",
+  projectId: "object-scan-db",
+  storageBucket: "object-scan-db.firebasestorage.app",
+  messagingSenderId: "987937201627",
+  appId: "1:987937201627:web:0825d38d1c62dab5821bfe"
+};
 
-    // Initialize Firebase Services
+    // 🔥 Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const storage = firebase.storage();
 
-    // 🎥 Camera Setup (Rear Camera Preferred)
+    // 📷 Elements
     const video = document.getElementById('webcam');
-
-    navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } },
-      audio: false
-    })
-    .then(stream => {
-      video.srcObject = stream;
-    })
-    .catch(error => {
-      alert("Camera access failed: " + error.message);
-      console.error("Camera error:", error);
-    });
-
-    // 📸 Take Snapshot
     const canvas = document.getElementById('snapshot');
     const captureBtn = document.getElementById('captureBtn');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const labelInput = document.getElementById('labelInput');
+    const statusText = document.getElementById('status');
 
-    captureBtn.onclick = () => {
-      const ctx = canvas.getContext('2d');
+    // ✅ Start Camera (rear-facing)
+    async function setupCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false
+        });
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          video.play();
+          statusText.textContent = "Camera ready";
+        };
+      } catch (err) {
+        statusText.textContent = "Camera access failed: " + err.message;
+        console.error("Camera error:", err);
+      }
+    }
+
+    // 📸 Take a snapshot
+    captureBtn.addEventListener("click", () => {
+      const ctx = canvas.getContext("2d");
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      canvas.style.display = 'block';
-    };
+      canvas.style.display = "block";
+      statusText.textContent = "Picture taken";
+    });
 
     // ☁️ Upload to Firebase
-    const uploadBtn = document.getElementById('uploadBtn');
-
-    uploadBtn.onclick = async () => {
-      const label = document.getElementById('labelInput').value.trim();
-
+    uploadBtn.addEventListener("click", async () => {
+      const label = labelInput.value.trim();
       if (!label) {
-        alert("Please enter a label for the object.");
+        alert("Please enter a label.");
         return;
       }
 
-      // Convert canvas to image blob
       const blob = await new Promise(resolve =>
-        canvas.toBlob(resolve, 'image/jpeg')
+        canvas.toBlob(resolve, "image/jpeg")
       );
 
       const filename = `${label}_${Date.now()}.jpg`;
-      const storageRef = storage.ref().child('objects/' + filename);
+      const ref = storage.ref().child("objects/" + filename);
 
-      // Upload image to Firebase Storage
-      await storageRef.put(blob);
-      const imageUrl = await storageRef.getDownloadURL();
+      try {
+        await ref.put(blob);
+        const url = await ref.getDownloadURL();
 
-      // Save label + URL to Firestore
-      await db.collection("objects").add({
-        label: label,
-        imageUrl: imageUrl,
-        timestamp: new Date().toISOString()
-      });
+        await db.collection("objects").add({
+          label: label,
+          imageUrl: url,
+          timestamp: new Date().toISOString()
+        });
 
-      alert("Image and label uploaded to Firebase!");
-    };
+        alert("Upload successful!");
+        statusText.textContent = "Uploaded to Firebase!";
+      } catch (error) {
+        console.error("Upload failed:", error);
+        alert("Upload failed: " + error.message);
+      }
+    });
+
+    // 🚀 Start camera on page load
+    window.addEventListener("DOMContentLoaded", setupCamera);
   </script>
 </body>
 </html>
