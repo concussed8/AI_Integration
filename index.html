@@ -2,35 +2,49 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Rear Camera Object Recognition</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Rear Camera Object Detection</title>
   <style>
-    body {
-      background: #000;
-      color: white;
-      text-align: center;
-      font-family: sans-serif;
+    html, body {
       margin: 0;
       padding: 0;
+      background: #000;
+      color: white;
+      font-family: sans-serif;
+      height: 100%;
+      overflow: hidden;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 1rem 0;
+      font-size: 1.2rem;
     }
 
     #container {
       position: relative;
       width: 100vw;
-      max-width: 640px;
-      margin: 0 auto;
-      aspect-ratio: 4 / 3;
-      border: 4px solid #00e676;
+      height: 100vw; /* Square aspect ratio for portrait */
+      max-height: 100vh;
+      max-width: 100vh;
+      margin: auto;
+      border: 3px solid #00e676;
+      overflow: hidden;
+      background: black;
     }
 
     video, canvas {
       position: absolute;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
+      object-fit: cover; /* Important! Prevent squishing */
     }
 
-    h1 {
-      margin: 1rem 0;
+    #status {
+      margin-top: 0.5rem;
+      font-size: 1rem;
     }
   </style>
 </head>
@@ -54,7 +68,7 @@
     async function setupCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { exact: "environment" } }  // Rear camera
+          video: { facingMode: { ideal: "environment" } }
         });
         video.srcObject = stream;
         return new Promise(resolve => {
@@ -84,6 +98,8 @@
     }
 
     function renderPredictions(predictions) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       predictions.forEach(pred => {
@@ -91,6 +107,7 @@
         ctx.lineWidth = 2;
         ctx.strokeRect(...pred.bbox);
         ctx.fillStyle = '#00e676';
+        ctx.font = '16px sans-serif';
         ctx.fillText(
           `${pred.class} (${Math.round(pred.score * 100)}%)`,
           pred.bbox[0],
