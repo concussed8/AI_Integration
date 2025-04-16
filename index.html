@@ -3,47 +3,45 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Object Recognition with Webcam</title>
+  <title>Rear Camera Object Recognition</title>
   <style>
     body {
-      margin: 0;
-      background: #111;
+      background: #000;
       color: white;
+      text-align: center;
       font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-    }
-
-    canvas, video {
-      position: absolute;
-      top: 0;
-      left: 0;
+      margin: 0;
+      padding: 0;
     }
 
     #container {
       position: relative;
-      width: 640px;
-      height: 480px;
+      width: 100vw;
+      max-width: 640px;
+      margin: 0 auto;
+      aspect-ratio: 4 / 3;
       border: 4px solid #00e676;
-      overflow: hidden;
+    }
+
+    video, canvas {
+      position: absolute;
+      width: 100%;
+      height: 100%;
     }
 
     h1 {
-      margin-bottom: 1rem;
+      margin: 1rem 0;
     }
   </style>
 </head>
 <body>
-  <h1>Real-Time Object Recognition</h1>
+  <h1>Rear Camera Object Detection</h1>
   <div id="container">
-    <video id="webcam" width="640" height="480" autoplay muted playsinline></video>
-    <canvas id="output" width="640" height="480"></canvas>
+    <video id="webcam" autoplay muted playsinline></video>
+    <canvas id="output"></canvas>
   </div>
+  <div id="status">Initializing...</div>
 
-  <!-- TensorFlow.js -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 
@@ -51,43 +49,48 @@
     const video = document.getElementById('webcam');
     const canvas = document.getElementById('output');
     const ctx = canvas.getContext('2d');
+    const statusText = document.getElementById('status');
 
     async function setupCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
-      return new Promise(resolve => {
-        video.onloadedmetadata = () => {
-          resolve(video);
-        };
-      });
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: "environment" } }  // Rear camera
+        });
+        video.srcObject = stream;
+        return new Promise(resolve => {
+          video.onloadedmetadata = () => resolve(video);
+        });
+      } catch (err) {
+        statusText.textContent = 'Error accessing rear camera.';
+        console.error('Camera error:', err);
+      }
     }
 
     async function run() {
+      statusText.textContent = 'Loading model...';
       await setupCamera();
+      if (!video.srcObject) return;
+
       const model = await cocoSsd.load();
+      statusText.textContent = 'Detecting...';
       detectFrame(video, model);
     }
 
     function detectFrame(video, model) {
       model.detect(video).then(predictions => {
         renderPredictions(predictions);
-        requestAnimationFrame(() => {
-          detectFrame(video, model);
-        });
+        requestAnimationFrame(() => detectFrame(video, model));
       });
     }
 
     function renderPredictions(predictions) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
       predictions.forEach(pred => {
-        ctx.beginPath();
-        ctx.rect(...pred.bbox);
-        ctx.lineWidth = 2;
         ctx.strokeStyle = '#00e676';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(...pred.bbox);
         ctx.fillStyle = '#00e676';
-        ctx.stroke();
         ctx.fillText(
           `${pred.class} (${Math.round(pred.score * 100)}%)`,
           pred.bbox[0],
