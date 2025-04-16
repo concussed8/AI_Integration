@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Rear Camera Object Detection</title>
+  <title>Object Detection (Single Snapshot)</title>
   <style>
     html, body {
       margin: 0;
@@ -11,26 +11,23 @@
       background: #000;
       color: white;
       font-family: sans-serif;
-      height: 100%;
-      overflow: hidden;
       text-align: center;
+      overflow-x: hidden;
     }
 
     h1 {
-      margin: 1rem 0;
-      font-size: 1.2rem;
+      margin: 1rem 0 0.5rem;
+      font-size: 1.3rem;
     }
 
     #container {
       position: relative;
       width: 100vw;
-      height: 100vw; /* Square aspect ratio for portrait */
-      max-height: 100vh;
-      max-width: 100vh;
+      max-width: 640px;
+      aspect-ratio: 4 / 3;
       margin: auto;
       border: 3px solid #00e676;
       overflow: hidden;
-      background: black;
     }
 
     video, canvas {
@@ -39,22 +36,37 @@
       left: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover; /* Important! Prevent squishing */
+      object-fit: cover;
+    }
+
+    #detectBtn {
+      margin-top: 1rem;
+      padding: 12px 24px;
+      font-size: 1rem;
+      background-color: #00e676;
+      border: none;
+      border-radius: 5px;
+      color: #000;
+      font-weight: bold;
     }
 
     #status {
-      margin-top: 0.5rem;
+      margin-top: 1rem;
       font-size: 1rem;
+      color: #aaa;
     }
   </style>
 </head>
 <body>
-  <h1>Rear Camera Object Detection</h1>
+  <h1>Tap to Detect Object</h1>
+
   <div id="container">
     <video id="webcam" autoplay muted playsinline></video>
     <canvas id="output"></canvas>
   </div>
-  <div id="status">Initializing...</div>
+
+  <button id="detectBtn">Detect Object</button>
+  <div id="status">Camera ready</div>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
@@ -64,6 +76,9 @@
     const canvas = document.getElementById('output');
     const ctx = canvas.getContext('2d');
     const statusText = document.getElementById('status');
+    const detectBtn = document.getElementById('detectBtn');
+
+    let model;
 
     async function setupCamera() {
       try {
@@ -80,43 +95,42 @@
       }
     }
 
-    async function run() {
-      statusText.textContent = 'Loading model...';
+    async function init() {
+      statusText.textContent = 'Initializing camera...';
       await setupCamera();
-      if (!video.srcObject) return;
 
-      const model = await cocoSsd.load();
-      statusText.textContent = 'Detecting...';
-      detectFrame(video, model);
+      statusText.textContent = 'Loading model...';
+      model = await cocoSsd.load();
+      statusText.textContent = 'Tap the button to detect an object.';
     }
 
-    function detectFrame(video, model) {
-      model.detect(video).then(predictions => {
-        renderPredictions(predictions);
-        requestAnimationFrame(() => detectFrame(video, model));
-      });
-    }
+    detectBtn.addEventListener('click', async () => {
+      if (!model) return;
 
-    function renderPredictions(predictions) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      predictions.forEach(pred => {
-        ctx.strokeStyle = '#00e676';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(...pred.bbox);
-        ctx.fillStyle = '#00e676';
-        ctx.font = '16px sans-serif';
-        ctx.fillText(
-          `${pred.class} (${Math.round(pred.score * 100)}%)`,
-          pred.bbox[0],
-          pred.bbox[1] > 10 ? pred.bbox[1] - 5 : 10
-        );
-      });
-    }
 
-    run();
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const predictions = await model.detect(canvas);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#00e676';
+      ctx.font = '18px sans-serif';
+      ctx.fillStyle = '#00e676';
+
+      predictions.forEach(pred => {
+        ctx.strokeRect(...pred.bbox);
+        ctx.fillText(`${pred.class} (${Math.round(pred.score * 100)}%)`, pred.bbox[0], pred.bbox[1] - 10);
+      });
+
+      if (predictions.length === 0) {
+        statusText.textContent = 'No objects detected.';
+      } else {
+        statusText.textContent = 'Detected: ' + predictions.map(p => p.class).join(', ');
+      }
+    });
+
+    init();
   </script>
 </body>
 </html>
